@@ -1,0 +1,554 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Formateador JSON para Mesa de Ayuda</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cg fill='%23e0802f'%3E%3Cellipse cx='32' cy='42' rx='14' ry='11'/%3E%3Cellipse cx='14' cy='29' rx='6' ry='8' transform='rotate%28-22 14 29%29'/%3E%3Cellipse cx='25' cy='16' rx='6' ry='8.5'/%3E%3Cellipse cx='39' cy='16' rx='6' ry='8.5'/%3E%3Cellipse cx='50' cy='29' rx='6' ry='8' transform='rotate%2822 50 29%29'/%3E%3C/g%3E%3C/svg%3E">
+<style>
+  :root { --bg:#f6f7f9; --panel:#fff; --text:#1c2230; --muted:#667085; --line:#d9dde5;
+          --key:#0b5cad; --str:#18794e; --num:#b4540a; --lit:#8e3b9e; --flag:#ffe680;
+          --err-bg:#fdecec; --err-line:#e5a1a1; --warn-bg:#fff6e0; --warn-line:#e8c777; --info-bg:#eaf2fd; --info-line:#a9c6ee;
+          --ok:#18794e; --bad:#b42318; --chip:#eceff4; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#12151b; --panel:#1a1f28; --text:#e6e9ef; --muted:#9aa4b5; --line:#2e3644;
+            --key:#7db7ff; --str:#6fd3a0; --num:#f0a35e; --lit:#d59be6; --flag:#7a6400;
+            --err-bg:#3a1c1c; --err-line:#7a3a3a; --warn-bg:#3a3017; --warn-line:#7a6730; --info-bg:#182a44; --info-line:#35588a;
+            --ok:#6fd3a0; --bad:#ff8a80; --chip:#262d3a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background:var(--bg); color:var(--text); padding-bottom:60px; }
+  header { padding:12px 20px; border-bottom:1px solid var(--line); background:var(--panel); display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  header h1 { font-size:18px; margin:0; margin-right:auto; }
+  header label { font-size:13px; color:var(--muted); display:flex; align-items:center; gap:6px; cursor:pointer; }
+  button, select { font:inherit; padding:7px 12px; border:1px solid var(--line); background:var(--panel); color:var(--text); border-radius:8px; cursor:pointer; }
+  button:hover, select:hover { border-color:var(--key); }
+  main { display:grid; grid-template-columns: 1fr 1fr; gap:14px; padding:14px 20px; height:calc(100vh - 122px); }
+  @media (max-width: 900px) { main { grid-template-columns:1fr; height:auto; } textarea { min-height:240px; } }
+  section { background:var(--panel); border:1px solid var(--line); border-radius:10px; display:flex; flex-direction:column; min-height:0; }
+  section > h2 { font-size:13px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:0; padding:10px 14px; border-bottom:1px solid var(--line); }
+  textarea { flex:1; width:100%; border:0; padding:14px; resize:none; font:13px/1.5 ui-monospace, Consolas, monospace; background:transparent; color:var(--text); outline:none; }
+  #outwrap { overflow:auto; padding:14px; flex:1; }
+  .txt { white-space:pre-wrap; word-break:break-word; font:13px/1.5 ui-monospace, Consolas, monospace; margin:6px 0; color:var(--muted); }
+  .block { border:1px solid var(--line); border-radius:8px; margin:10px 0; overflow:hidden; }
+  .block .bh { padding:5px 10px; font-size:12px; border-bottom:1px solid var(--line); display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .bh .st.valid { color:var(--ok); } .bh .st.invalid, .bh .st.incomplete { color:var(--bad); font-weight:600; }
+  .bh .ver { color:var(--ok); } .bh .ver.no { color:var(--bad); font-weight:700; }
+  .chip { background:var(--chip); border-radius:99px; padding:1px 9px; font-size:11px; color:var(--muted); }
+  .chip.role { color:var(--text); font-weight:600; }
+  .block pre { margin:0; padding:10px 12px; font:13px/1.5 ui-monospace, Consolas, monospace; white-space:pre-wrap; word-break:break-word; overflow-x:auto; }
+  .k { color:var(--key); } .s { color:var(--str); } .n { color:var(--num); } .l { color:var(--lit); }
+  .flag { background:var(--flag); border-radius:3px; padding:0 2px; }
+  a.exp { cursor:pointer; background:var(--chip); color:var(--muted); border-radius:4px; padding:0 5px; font-size:11px; margin:0 2px; user-select:none; }
+  a.exp:hover { color:var(--key); }
+  .card { border:1px solid var(--err-line); background:var(--err-bg); border-radius:8px; padding:10px 14px; margin-bottom:12px; font-size:14px; }
+  .card.warn { border-color:var(--warn-line); background:var(--warn-bg); }
+  .card.info { border-color:var(--info-line); background:var(--info-bg); }
+  .card .ct { font-weight:600; margin-bottom:6px; } .card .ct small { font-weight:400; color:var(--muted); margin-left:6px; }
+  .card p { margin:6px 0; }
+  .card ul.ml { margin:4px 0 6px; padding-left:20px; }
+  .card .msg { font-family: ui-monospace, Consolas, monospace; font-size:13px; word-break:break-word; }
+  .card .sub { color:var(--muted); font-size:13px; }
+  .card .hint { font-size:13px; padding-left:10px; border-left:3px solid var(--warn-line); color:var(--text); }
+  .card .hint b { font-weight:600; }
+  .card details { margin-top:6px; } .card summary { cursor:pointer; font-size:13px; color:var(--muted); }
+  .card .fl { font:12.5px/1.6 ui-monospace, Consolas, monospace; margin-top:4px; word-break:break-word; }
+  .card .fl .fk { color:var(--key); } .card .fl .fv { color:var(--str); } .card .fl .fn { color:var(--muted); font-family:system-ui,sans-serif; }
+  .card .grp { font-size:12px; color:var(--muted); margin-top:8px; }
+  .card .rep { font-size:12px; color:var(--muted); font-weight:400; }
+  .empty { color:var(--muted); font-size:14px; }
+  footer { padding:0 20px 12px; color:var(--muted); font-size:12px; }
+  #mascota { position:fixed; left:40px; bottom:4px; width:96px; height:60px; z-index:5; pointer-events:none; }
+  #gato { width:96px; height:60px; image-rendering:pixelated; display:block; }
+  #mascota.zz::after { content:"z Z"; position:absolute; left:62px; bottom:40px; color:var(--muted); font:700 13px system-ui; animation:flota 2.6s ease-in infinite; }
+  @keyframes flota { 0%{opacity:0;transform:translateY(0)} 30%{opacity:1} 100%{opacity:0;transform:translateY(-16px)} }
+  @media (prefers-reduced-motion: reduce) { #mascota::after { animation:none; } }
+</style>
+</head>
+<body>
+<div id="mascota"><canvas id="gato" width="48" height="30"></canvas></div>
+<header>
+  <h1>Formateador JSON · Mesa de Ayuda</h1>
+  <label title="Pliega los textos muy largos (por ejemplo el QR en base64). «Copiar resultado» siempre copia todo."><input type="checkbox" id="plegar" checked> Plegar textos muy largos</label>
+  <button id="copiar">Copiar resultado</button>
+  <button id="limpiar">Limpiar</button>
+</header>
+<main>
+  <section>
+    <h2>Pega aquí el texto del operador (JSON + texto suelto)</h2>
+    <textarea id="inp" spellcheck="false" placeholder="Pega el mensaje completo, con el texto que lo rodea..."></textarea>
+  </section>
+  <section>
+    <h2>Resultado</h2>
+    <div id="outwrap">
+      <div id="alerts"></div>
+      <div id="out"><p class="empty">El resultado aparecerá aquí mientras pegas.</p></div>
+    </div>
+  </section>
+</main>
+<footer>Todo se procesa en tu navegador: nada se envía a ningún servidor. El contenido nunca se modifica: solo cambian los espacios y saltos de línea entre elementos, y cada bloque se verifica contra el original. Solo se muestra lo que dice el propio JSON de la respuesta: no se interpreta ni se sugiere ninguna causa.</footer>
+
+<script id="core">
+/* ====================================================================
+   NÚCLEO (sin DOM; se puede probar aparte)
+   Principio: el JSON del operador NUNCA se parsea para volver a escribirlo.
+   Se recorre carácter a carácter y solo se cambian espacios/saltos de línea
+   que están FUERA de textos entre comillas. Todo lo demás se copia igual.
+   ==================================================================== */
+
+const TRADUCE = {
+  'one or more validation errors occurred.':'Uno o más errores de validación.',
+};
+
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+/* ---------- Tokenizador tolerante ----------
+   L = nivel de escape de las comillas: 0 → "texto";  1 → \"texto\";  3 → \\\"texto\\\" ...
+   Devuelve tokens: o (abre), c (cierra), p (, :), s (texto entre comillas), x (otro: números, true, basura…) */
+function bsRun(t, i) { let r = 0; while (t[i + r] === '\\') r++; return r; }
+
+function tokenize(text, start, limit, L) {
+  const tokens = [], stack = [];
+  const quoteAt = p => {
+    if (L === 0) return text[p] === '"';
+    if (text[p] !== '\\') return false;
+    const r = bsRun(text, p);
+    return r === L && text[p + r] === '"';
+  };
+  let i = start, openStr = false;
+  while (i < limit) {
+    const c = text[i];
+    if (/\s/.test(c)) { i++; continue; }
+    if (quoteAt(i)) {
+      let j = i + L + 1, closed = false;
+      while (j < limit) {
+        const d = text[j];
+        if (d === '\\') {
+          const r = bsRun(text, j);
+          if (j + r < limit && text[j + r] === '"') {
+            j += r + 1;
+            if (L === 0 ? r % 2 === 0 : r === L) { closed = true; break; }
+            continue;
+          }
+          j += r; continue;
+        }
+        if (d === '"' && L === 0) { j++; closed = true; break; }
+        j++;
+      }
+      tokens.push({ t:'s', v:text.slice(i, j), closed });
+      openStr = !closed; i = j; continue;
+    }
+    if (c === '{' || c === '[') { stack.push(c); tokens.push({ t:'o', v:c }); i++; continue; }
+    if (c === '}' || c === ']') {
+      const top = stack.pop();
+      tokens.push({ t:'c', v:c }); i++;
+      if ((top === '{' && c !== '}') || (top === '[' && c !== ']'))
+        return { tokens, end:i, status:'invalid', detail:'Se encontró «' + c + '» donde se esperaba «' + (top === '{' ? '}' : ']') + '».' };
+      if (!stack.length) return { tokens, end:i, status:'complete', detail:'' };
+      continue;
+    }
+    if (c === ',' || c === ':') { tokens.push({ t:'p', v:c }); i++; continue; }
+    let k = i;
+    while (k < limit && '{}[],:'.indexOf(text[k]) === -1 && !quoteAt(k)) k++;
+    tokens.push({ t:'x', v:text.slice(i, k).replace(/\s+$/, '') }); i = k;
+  }
+  const faltan = stack.slice().reverse().map(x => x === '{' ? '}' : ']');
+  return { tokens, end:limit, status:'incomplete',
+    detail:(openStr ? 'El texto se corta dentro de un valor entre comillas. ' : '') + 'Faltan ' + stack.length + ' cierre(s): ' + faltan.join(' ') + '.' };
+}
+
+/* ---------- Maquetado: la ÚNICA transformación es el espacio en blanco ---------- */
+function layout(tokens, L, opt) {
+  opt = opt || {};
+  const ind = '  '; let depth = 0, plain = '', html = '', prev = null, flagNext = false;
+  const nl = () => '\n' + ind.repeat(depth);
+  const emit = (p, h) => { plain += p; html += (h === undefined ? esc(p) : h); };
+  const inner = v => v.slice(L + 1, v.length - (L + 1));
+  for (let n = 0; n < tokens.length; n++) {
+    const tk = tokens[n];
+    if (tk.t === 'o') {
+      const nx = tokens[n + 1];
+      flagNext = false;
+      if (nx && nx.t === 'c' && ((tk.v === '{' && nx.v === '}') || (tk.v === '[' && nx.v === ']'))) { emit(tk.v + nx.v); n++; prev = nx; continue; }
+      depth++; emit(tk.v + nl());
+    } else if (tk.t === 'c') { depth = Math.max(0, depth - 1); emit(nl() + tk.v); }
+    else if (tk.t === 'p') { emit(tk.v === ',' ? ',' + nl() : ': '); }
+    else {
+      if (prev && (prev.t === 's' || prev.t === 'x')) emit(' ');
+      if (tk.t === 's') {
+        const nx = tokens[n + 1];
+        const isKey = nx && nx.t === 'p' && nx.v === ':';
+        let cls = isKey ? 'k' : 's';
+        if (isKey) { if (opt.flags && tk.closed && opt.flags.has(inner(tk.v).toLowerCase())) { cls += ' flag'; flagNext = true; } else flagNext = false; }
+        else { if (flagNext) cls += ' flag'; flagNext = false; }
+        if (!isKey && opt.collapse && tk.v.length > opt.collapse) {
+          const head = tk.v.slice(0, 100), rest = tk.v.slice(100);
+          emit(tk.v, '<span class="' + cls + '">' + esc(head) + '</span><a class="exp" role="button" tabindex="0" title="Mostrar el texto completo">… +' + rest.length + ' caracteres ▸</a><span class="' + cls + ' rest" hidden>' + esc(rest) + '</span>');
+        } else emit(tk.v, '<span class="' + cls + '">' + esc(tk.v) + '</span>');
+      } else {
+        let cls = /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(tk.v) ? 'n' : /^(?:true|false|null)$/.test(tk.v) ? 'l' : '';
+        if (flagNext) { cls += ' flag'; flagNext = false; }
+        emit(tk.v, cls ? '<span class="' + cls + '">' + esc(tk.v) + '</span>' : esc(tk.v));
+      }
+    }
+    prev = tk;
+  }
+  return { plain, html };
+}
+
+/* ---------- Detección de segmentos JSON dentro del texto ---------- */
+function detectL(text, i) {                 // nivel de escape según lo que sigue al { o [
+  let j = i + 1;
+  const skip = () => { while (j < text.length && /\s/.test(text[j])) j++; };
+  skip();
+  while (text[j] === '{' || text[j] === '[') { j++; skip(); }
+  const r = bsRun(text, j);
+  return text[j + r] === '"' ? r : -1;
+}
+
+function decodeLevels(raw, L) {
+  let s = raw, lv = L;
+  while (lv > 0) { s = JSON.parse('"' + s + '"'); lv = (lv - 1) / 2; }
+  return s;
+}
+function traduceError(m) {
+  if (/control character/i.test(m)) return 'Hay saltos de línea o caracteres de control dentro de un texto entre comillas (' + m + ').';
+  if (/unexpected|expected/i.test(m)) return 'Sintaxis no válida: ' + m;
+  return m;
+}
+
+function buildSeg(text, start, limit, L, role) {
+  let tok = tokenize(text, start, limit, L);
+  const raw = text.slice(start, tok.end);
+  let status = tok.status, detail = tok.detail, obj;
+  if (status === 'complete') {
+    try { obj = JSON.parse(decodeLevels(raw, L)); status = 'valid'; }
+    catch (e) { status = 'invalid'; detail = traduceError(e.message); }
+  }
+  return { start, end:tok.end, raw, role, L, status, detail, obj, tokens:tok.tokens };
+}
+
+const LABEL_RE = /(Respuesta|Petici[oó]n|Response|Request)\s*:\s*(?=[{\[])/gi;
+
+function findSegments(text) {
+  const matches = [];
+  let m; LABEL_RE.lastIndex = 0;
+  while ((m = LABEL_RE.exec(text))) matches.push({ label:m.index, brace:m.index + m[0].length, role:/^(petici|request)/i.test(m[1]) ? 'peticion' : 'respuesta' });
+  const segs = [], envoltorios = [];
+  let pos = 0;
+
+  function scanGap(from, to, followedByLabel) {
+    let i = from;
+    while (i < to) {
+      const c = text[i];
+      if (c === '{' || c === '[') {
+        const L = detectL(text, i);
+        if (L >= 0) {
+          const probe = tokenize(text, i, to, L);
+          if (probe.status === 'incomplete' && followedByLabel) {   // encabezado de un envoltorio: se deja como texto
+            envoltorios.push({ start:i, preview:text.slice(i, Math.min(to, i + 60)) });
+            i++; continue;
+          }
+          const seg = buildSeg(text, i, to, L, null);
+          segs.push(seg); i = seg.end; continue;
+        }
+      }
+      i++;
+    }
+  }
+
+  for (let mi = 0; mi < matches.length; mi++) {
+    const mt = matches[mi];
+    if (mt.brace < pos) continue;
+    scanGap(pos, mt.label, true);
+    let limit = text.length;
+    for (let nj = mi + 1; nj < matches.length; nj++) if (matches[nj].label > mt.brace) { limit = matches[nj].label; break; }
+    let L = detectL(text, mt.brace); if (L < 0) L = 0;
+    const seg = buildSeg(text, mt.brace, limit, L, mt.role);
+    segs.push(seg); pos = seg.end;
+  }
+  scanGap(pos, text.length, false);
+  return { segs, envoltorios: envoltorios.length };
+}
+
+/* ---------- Interpretación del error (prudente: señala, no confirma) ---------- */
+const MSG_KEYS = ['mensaje','message','msg','error','detail','detalle','descripcion','description'];
+const LIST_KEYS = ['errorMessages','errores','messages','mensajes'];
+const CODE_KEYS = ['codigo','code','statusCode','status','estado'];
+
+function extractError(o) {
+  const msgs = [];
+  MSG_KEYS.forEach(k => { if (typeof o[k] === 'string' && o[k].trim()) msgs.push({ text:o[k] }); });
+  LIST_KEYS.forEach(k => { if (Array.isArray(o[k])) o[k].forEach(x => { if (typeof x === 'string' && x.trim()) msgs.push({ text:x }); }); });
+  const e = o.errors;
+  if (Array.isArray(e)) e.forEach(x => { if (typeof x === 'string') msgs.push({ text:x }); });
+  else if (e && typeof e === 'object') Object.keys(e).forEach(f => (Array.isArray(e[f]) ? e[f] : [e[f]]).forEach(x => { if (typeof x === 'string') msgs.push({ text:x, field:f }); }));
+  let code = null;
+  for (const k of CODE_KEYS) if (o[k] !== undefined && o[k] !== null && typeof o[k] !== 'object') { code = o[k]; break; }
+  const lleno = v => Array.isArray(v) ? v.length > 0 : (v && typeof v === 'object') ? Object.keys(v).length > 0 : typeof v === 'string' ? v.trim() !== '' : (v !== undefined && v !== null && v !== false);
+  let isError = ['errors','errorMessages','errores','error'].some(k => lleno(o[k]));
+  if (!isError && code !== null && String(code).trim() !== '' && Number(code) >= 400) isError = true;
+  return { msgs, code, isError, title:typeof o.title === 'string' ? o.title : null };
+}
+
+function findCI(obj, nameLower, path, out) {
+  path = path || ''; out = out || [];
+  if (out.length >= 300 || obj === null || typeof obj !== 'object') return out;
+  if (Array.isArray(obj)) { obj.forEach((v, i) => findCI(v, nameLower, path + '[' + i + ']', out)); return out; }
+  Object.keys(obj).forEach(k => {
+    const p = path ? path + '.' + k : k;
+    if (k.toLowerCase() === nameLower) out.push({ path:p, value:obj[k] });
+    findCI(obj[k], nameLower, p, out);
+  });
+  return out;
+}
+
+function fmtVal(v) {
+  if (v === null) return 'null';
+  if (Array.isArray(v)) return '[' + v.length + ' elemento(s)]';
+  if (typeof v === 'object') return '{…}';
+  if (typeof v === 'string') { const s = JSON.stringify(v); return s.length > 90 ? s.slice(0, 90) + '…"' : s; }
+  return String(v);
+}
+function renderFields(items, cap) {
+  cap = cap || 60;
+  let h = '<div class="fl">';
+  items.slice(0, cap).forEach(it => {
+    h += it.none ? '<div><span class="fk">' + esc(it.name) + '</span> <span class="fn">— no aparece en la petición</span></div>'
+                 : '<div><span class="fk">' + esc(it.path) + '</span> = <span class="fv">' + esc(fmtVal(it.value)) + '</span>' + (it.value === '' ? ' <span class="fn">(texto vacío)</span>' : '') + '</div>';
+  });
+  if (items.length > cap) h += '<div class="fn">… y ' + (items.length - cap) + ' más</div>';
+  return h + '</div>';
+}
+
+function analyze(parts, info) {
+  /* Solo se muestra lo que está escrito en el propio JSON de la respuesta:
+     código, mensajes y, si el error nombra campos, el valor de esos campos en la petición.
+     No se interpreta ni se sugiere ninguna causa. */
+  const jparts = parts.filter(p => p.type === 'json');
+  jparts.forEach(p => {
+    p.err = (p.obj && typeof p.obj === 'object' && !Array.isArray(p.obj)) ? extractError(p.obj) : null;
+    if (p.role === 'respuesta') p.isResp = true;
+    else if (p.role === 'peticion') p.isResp = false;
+    else p.isResp = !!(p.err && p.err.msgs.length && p.err.code !== null);
+  });
+  const flags = new Set();
+  const cards = new Map();                       // html → repeticiones (mismo error repetido en el texto)
+  const addCard = h => cards.set(h, (cards.get(h) || 0) + 1);
+
+  jparts.forEach((p, idx) => {
+    if (!p.isResp || !p.err) return;
+    const e = p.err;
+    if (!e.isError && !e.msgs.length) return;     // respuesta sin marca de error ni mensaje: no se muestra tarjeta
+    let req = null;                              // petición asociada: la siguiente; si no hay, la anterior
+    for (let k = idx + 1; k < jparts.length && !jparts[k].isResp; k++) if (jparts[k].obj && typeof jparts[k].obj === 'object') { req = jparts[k]; break; }
+    if (!req) for (let k = idx - 1; k >= 0; k--) if (!jparts[k].isResp && jparts[k].obj && typeof jparts[k].obj === 'object') { req = jparts[k]; break; }
+
+    const numCode = e.code !== null && /^\d+$/.test(String(e.code).trim());
+    let h = '<div class="ct">' + (e.isError ? 'Lo que dice el error' : 'Mensaje de la respuesta') + ((e.isError ? e.code !== null : numCode) ? ' · código ' + esc(e.code) : '') + '</div>';
+    if (e.msgs.length) {
+      h += '<ul class="ml">' + e.msgs.map(m => '<li><span class="msg">' + esc(m.text) + '</span>' + (m.field ? ' <span class="sub">(campo: ' + esc(m.field) + ')</span>' : '') + '</li>').join('') + '</ul>';
+    } else h += '<p class="sub">La respuesta no trae un mensaje que se pueda reconocer automáticamente.</p>';
+    if (e.title && !e.msgs.some(m => m.text === e.title)) {
+      const t = TRADUCE[e.title.toLowerCase()];
+      h += '<p class="sub">' + esc(e.title) + (t ? ' — ' + esc(t) : '') + '</p>';
+    }
+    const named = [], seen = new Set();
+    e.msgs.forEach(m => { if (m.field && !seen.has(m.field.toLowerCase())) { seen.add(m.field.toLowerCase()); named.push(m.field); } });
+    if (named.length) {
+      const items = [];
+      named.forEach(n => { flags.add(n.toLowerCase()); const f = req ? findCI(req.obj, n.toLowerCase()) : []; if (f.length) items.push(...f); else if (req) items.push({ name:n, none:true }); });
+      h += '<div class="grp">Campos que el error nombra, con el valor que llevan en la petición:</div>' + renderFields(items);
+      if (!req) h += '<p class="sub">No encontré una petición válida en el texto para mostrar los valores.</p>';
+    }
+    addCard('<div class="card' + (e.isError ? '' : ' info') + '">' + h + '</div>');
+  });
+
+  const rows = [];
+  parts.filter(p => p.type === 'json' && p.status !== 'valid').forEach(p => {
+    rows.push('<div class="card warn"><div class="ct">JSON ' + (p.status === 'incomplete' ? 'incompleto (cortado)' : 'con errores de sintaxis') + (p.role ? '<small>' + (p.role === 'peticion' ? 'Petición' : 'Respuesta') + '</small>' : '') + '</div><p>' + esc(p.detail) + '</p><p class="sub">Se organizó tal como llegó, sin completar ni corregir nada.</p></div>');
+  });
+  if (info.envoltorios) rows.push('<div class="card info"><div class="ct">JSON dentro de otro texto o JSON</div><p>Se formateó el contenido interno y el texto que lo envuelve se dejó tal cual, sin tocar.</p></div>');
+  if (parts.some(p => p.type === 'json' && p.L > 0)) rows.push('<div class="card info"><div class="ct">Comillas escapadas</div><p>Parte del JSON viene con las comillas escapadas (<span class="msg">\\"</span>). Se organizó conservando todas las barras invertidas tal como llegaron.</p></div>');
+
+  let out = '';
+  cards.forEach((n, h) => { out += n > 1 ? h.replace('</div>', '<span class="rep">· aparece ' + n + ' veces en el texto</span></div>') : h; });
+  return { cards:out + rows.join(''), flags };
+}
+
+/* ---------- Proceso completo ---------- */
+function processText(text, opt) {
+  opt = opt || {};
+  const { segs, envoltorios } = findSegments(text);
+  const parts = []; let pos = 0;
+  segs.forEach(s => {
+    if (s.start > pos) parts.push({ type:'text', raw:text.slice(pos, s.start) });
+    parts.push(Object.assign({ type:'json' }, s));
+    pos = s.end;
+  });
+  if (pos < text.length) parts.push({ type:'text', raw:text.slice(pos) });
+  const { cards, flags } = analyze(parts, { envoltorios });
+
+  let html = '', plain = '', pendingNL = false;
+  parts.forEach(p => {
+    if (p.type === 'text') {
+      if (pendingNL && p.raw[0] !== '\n') plain += '\n';
+      pendingNL = false;
+      plain += p.raw;
+      const t = p.raw.replace(/^\s*\n|\n\s*$/g, '');
+      if (t.trim()) html += '<div class="txt">' + esc(t) + '</div>';
+    } else {
+      const lay = layout(p.tokens, p.L, { flags:p.isResp ? null : flags, collapse:opt.collapse });
+      p.formatted = lay.plain;
+      p.verified = p.raw.replace(/\s+/g, '') === lay.plain.replace(/\s+/g, '');
+      if (plain && !/\n$/.test(plain)) plain += '\n';
+      plain += lay.plain; pendingNL = true;
+      const label = { valid:'✓ JSON válido', invalid:'⚠ JSON con errores de sintaxis', incomplete:'⚠ JSON incompleto (cortado)' }[p.status];
+      html += '<div class="block"><div class="bh">' +
+        (p.role ? '<span class="chip role">' + (p.role === 'peticion' ? 'Petición' : 'Respuesta') + '</span>' : '') +
+        '<span class="st ' + p.status + '">' + label + '</span>' +
+        (p.verified ? '<span class="ver">✓ mismo contenido que el original</span>' : '<span class="ver no">⚠ NO coincide con el original: no uses este resultado</span>') +
+        (p.L > 0 ? '<span class="chip">comillas escapadas</span>' : '') +
+        '</div><pre>' + lay.html + '</pre></div>';
+    }
+  });
+  return { parts, plain, html, cards, jsonCount:segs.length };
+}
+</script>
+
+<script id="ui">
+const $ = id => document.getElementById(id);
+let ultimoPlano = '', timer;
+
+function ejecutar() {
+  const text = $('inp').value;
+  if (!text.trim()) { $('alerts').innerHTML = ''; $('out').innerHTML = '<p class="empty">El resultado aparecerá aquí mientras pegas.</p>'; ultimoPlano = ''; return; }
+  const r = processText(text, { collapse: $('plegar').checked ? 240 : 0 });
+  ultimoPlano = r.plain;
+  $('alerts').innerHTML = r.cards;
+  $('out').innerHTML = r.jsonCount ? r.html : '<p class="empty">No encontré ningún JSON en el texto.</p>' + r.html;
+}
+
+$('inp').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(ejecutar, 200); });
+$('plegar').onchange = ejecutar;
+$('limpiar').onclick = () => { $('inp').value = ''; ejecutar(); $('inp').focus(); };
+$('copiar').onclick = async () => {
+  if (!ultimoPlano) return;
+  try { await navigator.clipboard.writeText(ultimoPlano); }
+  catch (e) { const t = document.createElement('textarea'); t.value = ultimoPlano; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); }
+  const b = $('copiar'), o = b.textContent; b.textContent = '¡Copiado!'; setTimeout(() => b.textContent = o, 1200);
+};
+function alternar(a) {
+  const rest = a.nextElementSibling; if (!rest || !rest.classList.contains('rest')) return;
+  rest.hidden = !rest.hidden;
+  const n = rest.textContent.length;
+  a.textContent = rest.hidden ? '… +' + n + ' caracteres ▸' : '◂ ocultar';
+}
+$('out').addEventListener('click', e => { if (e.target.classList.contains('exp')) alternar(e.target); });
+$('out').addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('exp')) { e.preventDefault(); alternar(e.target); } });
+</script>
+<script id="mascota-js">
+(function () {
+  const W = 48, H = 30, S = 2;
+  const m = document.getElementById('mascota'), cv = document.getElementById('gato'), cx = cv.getContext('2d');
+  const C = { w:'#fff7ee', o:'#e8923f', b:'#3b3340', p:'#f4a3b0', l:'#3a2b2b', f:'#dccdbd', e:'#241c2a', h:'#ffffff' };   /* gatita calico */
+  const RGB = {}; for (const k in C) { const n = parseInt(C[k].slice(1), 16); RGB[k] = [n >> 16, (n >> 8) & 255, n & 255]; }
+  let buf;
+  const nuevo = () => { buf = new Array(W * H).fill(null); };
+  const put = (x, y, c, solo) => { x = Math.floor(x); y = Math.floor(y); if (x < 0 || y < 0 || x >= W || y >= H) return; const i = y * W + x; if (solo && !buf[i]) return; buf[i] = c; };
+  const elip = (ox, oy, rx, ry, c, solo) => { for (let y = Math.floor(oy - ry); y <= Math.ceil(oy + ry); y++) for (let x = Math.floor(ox - rx); x <= Math.ceil(ox + rx); x++) if (((x + .5 - ox) / rx) ** 2 + ((y + .5 - oy) / ry) ** 2 <= 1) put(x, y, c, solo); };
+  const tri = (a, b, c, col) => {
+    const [x1, y1, x2, y2, x3, y3] = [...a, ...b, ...c], d = (y2 - y3) * (x1 - x3) + (x3 - x2) * (y1 - y3);
+    for (let y = Math.floor(Math.min(y1, y2, y3)); y <= Math.ceil(Math.max(y1, y2, y3)); y++) for (let x = Math.floor(Math.min(x1, x2, x3)); x <= Math.ceil(Math.max(x1, x2, x3)); x++) {
+      const px = x + .5, py = y + .5, u = ((y2 - y3) * (px - x3) + (x3 - x2) * (py - y3)) / d, v = ((y3 - y1) * (px - x3) + (x1 - x3) * (py - y3)) / d;
+      if (u >= 0 && v >= 0 && u + v <= 1) put(x, y, col);
+    }
+  };
+  const linea = (x0, y0, x1, y1, r, c) => { const n = Math.ceil(Math.hypot(x1 - x0, y1 - y0) * 2) || 1; for (let i = 0; i <= n; i++) elip(x0 + (x1 - x0) * i / n, y0 + (y1 - y0) * i / n, r, r, c); };
+  function fin() {                                          /* contorno automático + volcado al canvas */
+    const img = cx.createImageData(W, H), d = img.data;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const i = y * W + x; let c = buf[i];
+      if (!c && ((x > 0 && buf[i - 1]) || (x < W - 1 && buf[i + 1]) || (y > 0 && buf[i - W]) || (y < H - 1 && buf[i + W]))) c = 'l';
+      if (c) d.set([...RGB[c], 255], i * 4);
+    }
+    cx.putImageData(img, 0, 0);
+  }
+  function cabeza(hx, hy, blink, oreja) {
+    tri([hx - 6, hy - 4], [hx - 4.5, hy - 11 + oreja], [hx - 1, hy - 5], 'b');
+    tri([hx + 1.5, hy - 5], [hx + 5, hy - 11], [hx + 7, hy - 3], 'o');
+    tri([hx - 5, hy - 5], [hx - 4.3, hy - 8.5 + oreja], [hx - 2.5, hy - 5.5], 'p'); tri([hx + 3, hy - 5.5], [hx + 5, hy - 9], [hx + 6, hy - 4.5], 'p');
+    elip(hx, hy, 7.5, 6, 'w'); elip(hx - 3.5, hy - 3.5, 4, 3, 'o', true);
+    if (blink) { put(hx + 2, hy, 'e'); put(hx + 3, hy, 'e'); put(hx + 4, hy, 'e'); }
+    else { for (let i = 0; i < 3; i++) { put(hx + 3, hy - 2 + i, 'e'); put(hx + 4, hy - 2 + i, 'e'); } put(hx + 3, hy - 2, 'h'); }
+    put(hx + 6, hy + 1, 'p'); put(hx + 7, hy + 1, 'p'); put(hx + 2, hy + 3, 'p'); put(hx + 3, hy + 3, 'p');
+  }
+  function cola(bx, by, t) {
+    for (let i = 0; i <= 12; i++) {
+      const u = i / 12, x = bx - 8 * u + Math.sin(t * 2.2 + u * 2.5) * 3 * u, y = by - 14 * u + 5 * u * u, r = 1.7 - u * .3;
+      elip(x, y, r, r, u > .72 ? 'b' : 'o');
+    }
+  }
+  function pata(hx, hy, ph, c, kb) {                        /* paso: apoyo hacia atrás, vuelo con levantada */
+    const s = ((ph / (2 * Math.PI)) % 1 + 1) % 1; let fx, lift;
+    if (s < .5) { fx = 4 - 8 * s / .5; lift = 0; } else { fx = -4 + 8 * (s - .5) / .5; lift = Math.sin(Math.PI * (s - .5) / .5) * 3.5; }
+    const x1 = hx + fx, y1 = 26 - lift, kx = (hx + x1) / 2 + kb, ky = (hy + y1) / 2;
+    linea(hx, hy, kx, ky, 1.5, c); linea(kx, ky, x1, y1, 1.3, c); elip(x1 + 1, y1 + .6, 2.2, 1.2, c);
+  }
+  function camina(ph, t) {
+    nuevo(); const by = 16 + Math.sin(ph * 2) * .9;
+    pata(16.5, by + 4, ph + Math.PI, 'f', -2.5); pata(29, by + 4, ph, 'f', 1.5);
+    cola(11, by - 1, t);
+    elip(22, by, 10.5, 6, 'w'); elip(17, by - 3, 5, 3.4, 'o', true); elip(25.5, by - 4, 3.4, 2.6, 'b', true); elip(14, by + 2, 3, 2.6, 'b', true);
+    pata(15.5, by + 4, ph, 'w', -2.5); pata(28, by + 4, ph + Math.PI, 'w', 1.5);
+    cabeza(35, 12 + Math.sin(ph * 2 + 1) * .6, false, 0); fin();
+  }
+  function sentada(t, blink) {
+    nuevo(); const r = Math.sin(t * 1.8) * .3;
+    cola(11, 23, t * .7);
+    linea(26.5, 21, 26.5, 26, 1.4, 'f');
+    elip(17, 22, 8.5, 5.5, 'w'); elip(15, 20, 4, 3, 'b', true); elip(20, 24, 3, 2.4, 'o', true);
+    elip(26, 19 + r, 5.5, 7.5, 'w'); elip(25, 16, 3.5, 3.5, 'o', true);
+    elip(21.5, 26.4, 5, 1.5, 'w'); linea(29, 21, 29, 26, 1.6, 'w'); elip(30, 26.6, 2.6, 1.3, 'w');
+    cabeza(32, 12 + r, blink, Math.sin(t * 3) > .96 ? -1 : 0); fin();
+  }
+  function dormida(t) {
+    nuevo(); const r = Math.sin(t * 1.7) * .4;
+    elip(23, 22.5, 14, 5.2 + r * .3, 'w'); elip(17, 20, 5.5, 3, 'o', true); elip(26, 20, 4, 2.5, 'b', true); elip(11, 24, 3.5, 2.5, 'o', true);
+    linea(9, 24.5, 16, 27, 1.5, 'o'); linea(16, 27, 30, 27, 1.4, 'o'); linea(30, 27, 36, 26.6, 1.4, 'b');
+    tri([32, 19], [33, 14.5], [36.5, 18.5], 'b'); tri([37.5, 18.5], [40.5, 14.5], [42, 20], 'o');
+    elip(37, 22.5, 6, 4.8, 'w'); elip(34, 20, 3, 2.5, 'o', true);
+    put(37, 22, 'e'); put(38, 22, 'e'); put(39, 22, 'e'); put(41, 23, 'p'); put(40, 23, 'p'); put(37, 25, 'p');
+    fin();
+  }
+  let x = 40, dir = 1, v = 0, ph = 0, t = 0, modo = 'sentada', hasta = 0, dest = 0, prev = performance.now();
+  const ancho = () => Math.max(0, innerWidth - W * S - 8);
+  function elegir() {                                       /* lo que se le antoje: caminar, sentarse o dormir */
+    const r = Math.random(), ahora = performance.now();
+    if (r < .5) { modo = 'camina'; dest = Math.random() * ancho(); if (Math.abs(dest - x) < 100) dest = x < ancho() / 2 ? ancho() : 0; }
+    else if (r < .8) { modo = 'sentada'; hasta = ahora + 3000 + Math.random() * 6000; v = 0; }
+    else { modo = 'dormida'; hasta = ahora + 7000 + Math.random() * 9000; v = 0; }
+    m.classList.toggle('zz', modo === 'dormida');
+  }
+  function bucle(now) {
+    const dt = Math.min(.1, (now - prev) / 1000); prev = now; t += dt;
+    if (modo === 'camina') {
+      const d = dest - x, cerca = Math.abs(d) < 50;
+      dir = d > 0 ? 1 : -1;
+      v += ((cerca ? 0 : 40) - v) * Math.min(1, dt * 3);   /* acelera y frena suave */
+      x += dir * v * dt; ph += 2 * Math.PI * v / 32 * dt;
+      if (cerca && v < 4) elegir();
+      camina(ph, t);
+    } else {
+      if (now > hasta) elegir();
+      if (modo === 'sentada') sentada(t, t % 4.2 < .15); else dormida(t);
+    }
+    x = Math.max(0, Math.min(x, ancho()));
+    m.style.left = x + 'px'; cv.style.transform = dir < 0 ? 'scaleX(-1)' : 'none';
+    requestAnimationFrame(bucle);
+  }
+  elegir(); requestAnimationFrame(bucle);
+})();
+</script>
+</body>
+</html>
